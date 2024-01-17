@@ -69,7 +69,9 @@ summary: LangChain promises easy swappability. It didn't go so well for us.
 
 It [promises](https://www.langchain.com/) "flexible abstractions", "easily-swappable components" and "pre-built chains for any use-case".
 
-So we can replace its proprietary API usage (e.g. ChatGPT) with a locally-run LLM? Let's give it a try.
+We have an existing LangChain application, <a href="https://blog.scottlogic.com/2023/10/23/building_scottbot_an_ai_chatbot_for_scott_logic.html">Scottbot</a>, which provides a chat interface for our employees, and answers their questions by referring to the documents in our Confluence. It is currently powered by OpenAI APIs.
+
+Can we replace its proprietary API usage with a locally-run LLM? Let's give it a try.
 
 ### Local LLM Clients (Might) Cost VRAM
 
@@ -165,3 +167,17 @@ CUDACXX=/usr/local/cuda/bin/nvcc CMAKE_ARGS="-DLLAMA_CUBLAS=ON -DLLAMA_CUDA_F16=
 ```
 
 Installation for other platforms is detailed [in the `llama-cpp-python` README](https://github.com/abetlen/llama-cpp-python#installation-with-specific-hardware-acceleration-blas-cuda-metal-etc).
+
+### Local Inference Can Be Slower
+
+We can assume that OpenAI invest a lot in their model deployment, as they are well-resourced and because running costs are existential for profitability. It can be assumed they are using every trick in the book (<a href="https://arxiv.org/abs/2211.17192">speculative decoding</a>, <a href="https://pytorch.org/blog/flash-decoding/">flash decoding</a>,  <a href="https://arxiv.org/abs/1701.06538">mixture-of-experts</a>, quantization, custom kernels, custom <a href="https://github.com/openai/triton">compilers</a>, optimized runtimes) and a few more that aren't in any book.
+
+If we want to match that speed locally: our work is cut out for us. We can choose smaller models, and we can pick the best backend we can find.
+
+The first backend we tried was `llama-cpp-python`, which provides bindings to [`llama.cpp`](https://github.com/ggerganov/llama.cpp). On an Nvidia RTX 4090, it achieved an inference speed of 40 tokens/sec. This was too slow for us to use for real-time chat. Extracting facts from a single wiki document could take 9 seconds (where previously we enjoyed sub-second responses).
+
+Embedding the 787 documents in our wiki took 45 minutes, where previously we expected sub-minute durations. This wasn't a fair fight, as our local embeddings model, at 7 billion parameters, may be 20x larger than our original OpenAI embedding model, text-embedding-ada-002 (<a href="https://community.openai.com/t/what-version-of-gpt-is-text-embedding-ada-002-based-on/404462">presumed to be</a> 350 million parameters).
+
+Is there a faster backend available? We could try <a href="https://github.com/turboderp/exllamav2">exllamav2</a>, which has optimisations for inferencing from quantized weights, and purports to be to be 5x faster, at 195 tokens/sec.  
+
+<a href="https://github.com/vllm-project/vllm">vLLM</a> is another contender for a fast backend. It could be a good choice for batched inference.
